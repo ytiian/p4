@@ -58,7 +58,7 @@ struct headers {
     arp_ipv4_t   arp_ipv4;
     ipv4_t       ipv4;
 }
-
+/*用户元数据的结构定义，用于存储中间数据*/
 struct metadata {
     ipv4_addr_t ipv4_dst;
     mac_addr_t  mac_dst;
@@ -78,22 +78,22 @@ parser MyParser(packet_in packet,
     state start {
         packet.extract(hdr.ethernet);
 	      transition select(hdr.ethernet.etherType){
-		          ETHERTYPE_IPV4:parse_ipv4;
-              ETHERTYPE_ARP:parse_arp;
+		          ETHERTYPE_IPV4:parse_ipv4;/*转去对ipv4报文进行解析*/
+             		  ETHERTYPE_ARP:parse_arp;/*转去对arp报文进行解析*/
 		          default:accept;
 	            }
     }
 
     state parse_ipv4{
-	     packet.extract(hdr.ipv4);
-       meta.ipv4_dst = hdr.ipv4.dstAddr;
-       transition accept;
+	packet.extract(hdr.ipv4);
+        meta.ipv4_dst = hdr.ipv4.dstAddr;/*记录目标ip地址*/
+        transition accept;
     }
 
     state parse_arp{
         packet.extract(hdr.arp);
         transition select(hdr.arp.htype, hdr.arp.ptype,
-                          hdr.arp.hlen,  hdr.arp.plen){
+                          hdr.arp.hlen,  hdr.arp.plen){/*转去对arp报文ipv4部分的解析*/
                           (ARP_HTYPE_ETHERNET,ARP_PTYPE_IPV4,ARP_HLEN_ETHERNET,ARP_PLEN_IPV4):parse_arp_ipv4;
                           default:accept;
                           }
@@ -101,7 +101,7 @@ parser MyParser(packet_in packet,
 
     state parse_arp_ipv4{
         packet.extract(hdr.arp_ipv4);
-        meta.ipv4_dst = hdr.arp_ipv4.tpa;
+        meta.ipv4_dst = hdr.arp_ipv4.tpa;/*记录目标ip地址*/
         transition accept;
     }
 }
@@ -131,7 +131,7 @@ control MyIngress(inout headers hdr,
       meta.mac_dst      = dstAddr;
       meta.mac_src      = srcAddr;
       meta.egress_port = port;
-    }
+    }/*每经过一次交换机都要记录一下当前mac地址和下一跳的mac地址以及出端口*/
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
@@ -145,6 +145,7 @@ control MyIngress(inout headers hdr,
     }
 
     action ipv4_forward() {
+    /*如果是收到普通的ipv4报文,则修改源mac地址和目的地址并重新封装以太网帧,每经过一跳，ttl要减1*/
         standard_metadata.egress_spec = meta.egress_port;
         hdr.ethernet.dstAddr = meta.mac_dst;
         hdr.ethernet.srcAddr = meta.mac_src;
@@ -152,20 +153,21 @@ control MyIngress(inout headers hdr,
       }
 
     action send_arp_reply() {
-        hdr.ethernet.dstAddr = hdr.arp_ipv4.sha;
+    /*如果是收到arp请求报文，则按原来发回arp reply报文，reply报文的源地址和目标地址与request报文相反*/
+        hdr.ethernet.dstAddr = hdr.arp_ipv4.sha;/*修改以太网帧中的地址*/
         hdr.ethernet.srcAddr = hdr.arp_ipv4.tha;
 
-        hdr.arp.oper         = 2;
+        hdr.arp.oper         = 2;/*更改这个参数，使request报文变为reply报文*/
 
-        hdr.arp_ipv4.tha     = hdr.arp_ipv4.sha;
+        hdr.arp_ipv4.tha     = hdr.arp_ipv4.sha;/*修改ipv4报文中的地址*/
         hdr.arp_ipv4.tpa     = hdr.arp_ipv4.spa;
         hdr.arp_ipv4.sha     = meta.mac_dst;
         hdr.arp_ipv4.spa     = meta.ipv4_dst;
 
-        standard_metadata.egress_spec = standard_metadata.ingress_port;
+        standard_metadata.egress_spec = standard_metadata.ingress_port;/*从入端口再发出*/
     }
     table forward {
-      key = {
+      key = {/*匹配报文中的参数执行不同的操作*/
         hdr.arp.isValid()      : exact;
         hdr.arp.oper           : ternary;
         hdr.arp_ipv4.isValid() : exact;
@@ -178,8 +180,8 @@ control MyIngress(inout headers hdr,
     }
     const default_action = drop();
     const entries = {
-        ( true,1,true,false) :send_arp_reply();
-        ( false, _,false,true) :ipv4_forward();
+        ( true,1,true,false) :send_arp_reply();/*对arp报文执行的操作*/
+        ( false, _,false,true) :ipv4_forward();/*对普通报文执行的操作*/
     }
 }
 
@@ -208,7 +210,7 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 	update_checksum(
 	    hdr.ipv4.isValid(),
             { hdr.ipv4.version,
-	            hdr.ipv4.ihl,
+	      hdr.ipv4.ihl,
               hdr.ipv4.diffserv,
               hdr.ipv4.totalLen,
               hdr.ipv4.identification,
@@ -218,8 +220,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
               hdr.ipv4.protocol,
               hdr.ipv4.srcAddr,
               hdr.ipv4.dstAddr },
-            hdr.ipv4.hdrChecksum,
-            HashAlgorithm.csum16);
+              hdr.ipv4.hdrChecksum,
+              HashAlgorithm.csum16);
     }
 }
 
@@ -230,8 +232,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
 	     packet.emit(hdr.ethernet);
-       packet.emit(hdr.arp);
-       packet.emit(hdr.arp_ipv4);
+             packet.emit(hdr.arp);
+             packet.emit(hdr.arp_ipv4);
 	     packet.emit(hdr.ipv4);
     }
 }
