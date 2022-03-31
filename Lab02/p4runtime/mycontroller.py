@@ -15,6 +15,7 @@ from p4runtime_lib.error_utils import printGrpcError
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 import p4runtime_lib.helper
 
+#根据拓扑图可以得出的交换机到下一跳交换机的出端口
 SWITCH_TO_HOST_PORT = 1
 S1_TO_S2_PORT = 2
 S2_TO_S1_PORT = 2
@@ -23,25 +24,9 @@ S3_TO_S1_PORT = 2
 S3_TO_S2_PORT = 3
 S2_TO_S3_PORT = 3
 
+#writeTunnelRules函数增加了一个新参数port，因为交换机到下一跳交换机将不一定是2，也可能是3
 def writeTunnelRules(p4info_helper, ingress_sw, egress_sw, tunnel_id,
                      dst_eth_addr, dst_ip_addr, port):
-    """
-    Installs three rules:
-    1) An tunnel ingress rule on the ingress switch in the ipv4_lpm table that
-       encapsulates traffic into a tunnel with the specified ID
-    2) A transit rule on the ingress switch that forwards traffic based on
-       the specified ID
-    3) An tunnel egress rule on the egress switch that decapsulates traffic
-       with the specified ID and sends it to the host
-
-    :param p4info_helper: the P4Info helper
-    :param ingress_sw: the ingress switch connection
-    :param egress_sw: the egress switch connection
-    :param tunnel_id: the specified tunnel ID
-    :param dst_eth_addr: the destination IP to match in the ingress rule
-    :param dst_ip_addr: the destination Ethernet address to write in the
-                        egress rule
-    """
     # 1) Tunnel Ingress Rule
     table_entry = p4info_helper.buildTableEntry(
         table_name="MyIngress.ipv4_lpm",
@@ -70,10 +55,6 @@ def writeTunnelRules(p4info_helper, ingress_sw, egress_sw, tunnel_id,
     print("TODO Install transit tunnel rule")
 
     # 3) Tunnel Egress Rule
-    # For our simple topology, the host will always be located on the
-    # SWITCH_TO_HOST_PORT (port 1).
-    # In general, you will need to keep track of which port the host is
-    # connected to.
     table_entry = p4info_helper.buildTableEntry(
         table_name="MyIngress.myTunnel_exact",
         match_fields={
@@ -89,12 +70,7 @@ def writeTunnelRules(p4info_helper, ingress_sw, egress_sw, tunnel_id,
 
 
 def readTableRules(p4info_helper, sw):
-    """
-    Reads the table entries from all tables on the switch.
-
-    :param p4info_helper: the P4Info helper
-    :param sw: the switch connection
-    """
+    #交换机流表规则的读取
     print('\n----- Reading tables rules for %s -----' % sw.name)
     for response in sw.ReadTableEntries():
         for entity in response.entities:
@@ -118,16 +94,6 @@ def readTableRules(p4info_helper, sw):
 
 
 def printCounter(p4info_helper, sw, counter_name, index):
-    """
-    Reads the specified counter at the specified index from the switch. In our
-    program, the index is the tunnel ID. If the index is 0, it will return all
-    values from the counter.
-
-    :param p4info_helper: the P4Info helper
-    :param sw:  the switch connection
-    :param counter_name: the name of the counter from the P4 program
-    :param index: the counter index (in our case, the tunnel ID)
-    """
     for response in sw.ReadCounters(p4info_helper.get_counters_id(counter_name), index):
         for entity in response.entities:
             counter = entity.counter_entry
@@ -141,9 +107,7 @@ def main(p4info_file_path, bmv2_file_path):
     p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_file_path)
 
     try:
-        # Create a switch connection object for s1 and s2;
-        # this is backed by a P4Runtime gRPC connection.
-        # Also, dump all P4Runtime messages sent to switch to given txt files.
+        #增加了s3的配置
         s1 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
             name='s1',
             address='127.0.0.1:50051',
@@ -159,8 +123,7 @@ def main(p4info_file_path, bmv2_file_path):
             address='127.0.0.1:50053',
             device_id=2,
             proto_dump_file='logs/s3-p4runtime-requests.txt')
-        # Send master arbitration update message to establish this controller as
-        # master (required by P4Runtime before performing any other write operation)
+        # 增加s3
         s1.MasterArbitrationUpdate()
         s2.MasterArbitrationUpdate()
         s3.MasterArbitrationUpdate()
@@ -184,19 +147,19 @@ def main(p4info_file_path, bmv2_file_path):
         writeTunnelRules(p4info_helper, ingress_sw=s2, egress_sw=s1, tunnel_id=200,
                          dst_eth_addr="08:00:00:00:01:11", dst_ip_addr="10.0.1.1",port=S2_TO_S1_PORT)
 
-		# Write the rules that tunnel traffic from h1 to h3
+	# 补充： Write the rules that tunnel traffic from h1 to h3
         writeTunnelRules(p4info_helper, ingress_sw=s1, egress_sw=s3, tunnel_id=300,
                          dst_eth_addr="08:00:00:00:03:33", dst_ip_addr="10.0.3.3",port=S1_TO_S3_PORT)
 
-        # Write the rules that tunnel traffic from h3 to h1
+        # 补充： Write the rules that tunnel traffic from h3 to h1
         writeTunnelRules(p4info_helper, ingress_sw=s3, egress_sw=s1, tunnel_id=400,
                          dst_eth_addr="08:00:00:00:01:11", dst_ip_addr="10.0.1.1",port=S3_TO_S1_PORT)
 
-		# Write the rules that tunnel traffic from h2 to h3
+	# 补充：Write the rules that tunnel traffic from h2 to h3
         writeTunnelRules(p4info_helper, ingress_sw=s2, egress_sw=s3, tunnel_id=500,
                          dst_eth_addr="08:00:00:00:03:33", dst_ip_addr="10.0.3.3",port=S2_TO_S3_PORT)
 
-		# Write the rules that tunnel traffic from h3 to h2
+	# 补充：Write the rules that tunnel traffic from h3 to h2
         writeTunnelRules(p4info_helper, ingress_sw=s3, egress_sw=s2, tunnel_id=600,
                          dst_eth_addr="08:00:00:00:02:22", dst_ip_addr="10.0.2.2",port=S3_TO_S2_PORT)
 
@@ -205,7 +168,7 @@ def main(p4info_file_path, bmv2_file_path):
         readTableRules(p4info_helper, s2)
         readTableRules(p4info_helper, s3)
 
-        # Print the tunnel counters every 2 seconds
+        # 每2秒打印一次通过每条链路的数据包的计数情况
         while True:
             sleep(2)
             print('\n----- Reading tunnel counters -----')
