@@ -28,6 +28,7 @@ header ipv4_t {
     bit<4>    ihl;
     bit<6>    diffserv;
     bit<2>    ecn;
+    /*将8bit的tos分解为6bit的diffserv和2bit的ecn*/
     bit<16>   totalLen;
     bit<16>   identification;
     bit<3>    flags;
@@ -138,6 +139,7 @@ control MyEgress(inout headers hdr,
          if(hdr.ipv4.ecn==1||hdr.ipv4.ecn==2)
          {
             if(standard_metadata.enq_qdepth>=ECN_THRESHOLD)
+            /*如果队伍长度超过阈值，则将ecn的值置为3，表示拥塞*/
             hdr.ipv4.ecn=3;
          }
     }
@@ -154,6 +156,7 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
             hdr.ipv4.isValid(),
             { hdr.ipv4.version,
               hdr.ipv4.ihl,
+              /*将tos分解成diffserv和ecn需要更新计算校验和的方法*/
               hdr.ipv4.diffserv,
               hdr.ipv4.ecn,
               hdr.ipv4.totalLen,
