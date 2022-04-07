@@ -107,7 +107,8 @@ parser MyParser(packet_in packet,
             default       : parse_ipv4_option;
         }
     }
-
+    
+    /*根据状态图和todo的提示来编写*/
     state parse_ipv4_option {
         /*
         * TODO: Add logic to:
@@ -141,6 +142,7 @@ parser MyParser(packet_in packet,
         }
     }
 
+    /*swtrace报头的递归解析*/
     state parse_swtrace {
         /*
         * TODO: Add logic to:
@@ -228,7 +230,7 @@ control MyEgress(inout headers hdr,
         */
         hdr.mri.count=hdr.mri.count+1;
         hdr.swtraces.push_front(1);
-        hdr.swtraces[0].setValid();
+        hdr.swtraces[0].setValid();/*需要setValid()才能使用*/
         hdr.swtraces[0].swid=swid;
         hdr.swtraces[0].qdepth=(qdepth_t)standard_metadata.deq_qdepth;
         hdr.ipv4.ihl=hdr.ipv4.ihl+2;
