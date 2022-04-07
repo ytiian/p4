@@ -15,6 +15,7 @@ from p4runtime_lib.error_utils import printGrpcError
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 import p4runtime_lib.helper
 
+#根据topology.json及拓扑图可以得出各设备相连接的端口
 S1_TO_H1_PORT = 2
 S1_TO_H11_PORT = 1
 S1_TO_S2_PORT = 3
@@ -27,6 +28,8 @@ S3_TO_H3_PORT = 1
 S3_TO_S1_PORT = 2
 S3_TO_S2_PORT = 3
 
+#增加一个match_len函数，以根据不同情况来修改掩码的大小
+#根据原来的sx-runtime.json来编写函数，以实现流表的动态下发
 def writeTranRules(p4info_helper, ingress_sw,
                       dst_ip_addr, dst_next_addr, tran_port, match_len):
     table_entry = p4info_helper.buildTableEntry(
@@ -96,6 +99,7 @@ def main(p4info_file_path, bmv2_file_path):
                                        bmv2_json_file_path=bmv2_file_path)
         print("Installed P4 Program using SetForwardingPipelineConfig on s3")
 
+        #根据sx-runtime.json来填入参数的实际值
         writeTranRules(p4info_helper, ingress_sw=s1, dst_ip_addr="10.0.1.1",
                          dst_next_addr="08:00:00:00:01:01",tran_port=S1_TO_H1_PORT,match_len=32)
         writeTranRules(p4info_helper, ingress_sw=s1, dst_ip_addr="10.0.1.11",
@@ -132,6 +136,7 @@ def main(p4info_file_path, bmv2_file_path):
 
 if __name__ =='__main__':
     parser = argparse.ArgumentParser(description='P4Runtime Controller')
+    #配置要对应修改
     parser.add_argument('--p4info', help='p4info proto in text format from p4c',
                         type=str, action="store", required=False,
                         default='./build/ecn.p4.p4info.txt')
